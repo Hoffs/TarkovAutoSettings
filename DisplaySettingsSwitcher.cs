@@ -38,12 +38,24 @@ public class DisplaySettingsSwitcher : IDisposable
         Console.WriteLine($"Primary Windows Display: {_winDisplay.DeviceName}");
         Console.WriteLine($"Primary Nv Display: {_nvDisplay.Output}");
         Console.WriteLine($"Primary Nv Display Vibrance: {_nvDisplay.Output.DigitalVibranceControl}");
-        Disable();
+        Disable(true);
+    }
+    
+    public void Set(bool isEnabled)
+    {
+        if (isEnabled)
+        {
+            Enable();
+        }
+        else
+        {
+            Disable();
+        }
     }
 
-    public void Enable()
+    public void Enable(bool force = false)
     {
-        if (_isEnabled)
+        if (_isEnabled && !force)
         {
             return;
         }
@@ -57,9 +69,9 @@ public class DisplaySettingsSwitcher : IDisposable
 #endif
     }
 
-    public void Disable()
+    public void Disable(bool force = false)
     {
-        if (!_isEnabled)
+        if (!_isEnabled && !force)
         {
             return;
         }
@@ -76,9 +88,9 @@ public class DisplaySettingsSwitcher : IDisposable
 #if DEBUG
     private void LogDisplayStatus()
     {
-        Console.WriteLine($"Display Status:");
-        Console.WriteLine($"Enabled: {_isEnabled}");
-        Console.WriteLine($"Vibrance: {_nvVibrance}");
+        Console.WriteLine($"[{nameof(DisplaySettingsSwitcher)}] Display Status:");
+        Console.WriteLine($"[{nameof(DisplaySettingsSwitcher)}] Enabled: {_isEnabled}");
+        Console.WriteLine($"[{nameof(DisplaySettingsSwitcher)}] Vibrance: {_nvVibrance}");
     }
 #endif
 

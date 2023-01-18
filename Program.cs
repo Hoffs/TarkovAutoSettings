@@ -33,16 +33,25 @@ void HandleWindowEvent(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int id
     Console.WriteLine($"Received event {eventType} for hwnd {hwnd}");
 #endif
 
-    const uint nChars = 2048;
-    var windowText = new StringBuilder((int)nChars);
-    var moduleWindowText = WinApi.GetWindowText(hwnd, windowText, (int)nChars);
+    try
+    {
+        const uint nChars = 2048;
+        var windowText = new StringBuilder((int)nChars);
+        var moduleWindowText = WinApi.GetWindowText(hwnd, windowText, (int)nChars);
 
-    var windowName = windowText.ToString();
-    channel.Writer.TryWrite((windowName, dwmsEventTime));
+        var windowName = windowText.ToString();
+        channel.Writer.TryWrite((windowName, dwmsEventTime));
 
 #if DEBUG
-    Console.WriteLine($"Foreground window name: '{windowText}'");
+        Console.WriteLine($"Foreground window name: '{windowText}'");
 #endif
+    }
+    catch (Exception e)
+    {
+        Console.WriteLine("Failed to handle event");
+        Console.WriteLine(e.Message);
+        Console.WriteLine(e.StackTrace);
+    }
 }
 
 var handlerDelegate = new WinApi.WinEventProc(HandleWindowEvent);
@@ -76,43 +85,64 @@ hookThread.Start();
 
 Console.CancelKeyPress += (sender, evt) =>
 {
+    Console.WriteLine("Cancel pressed");
     cts.Cancel();
     switcher.Disable();
 };
 
+AppDomain.CurrentDomain.UnhandledException += (sender, evt) =>
+{
+    if (evt.ExceptionObject is Exception e)
+    {
+        Console.WriteLine("Unhandled");
+        Console.WriteLine($"{e.GetType} / {e.Message}");
+        Console.WriteLine(e.StackTrace);
+    }
+};
+
 Console.WriteLine("Starting to read foreground window events");
 
-while (!cts.IsCancellationRequested)
+try
 {
-    uint lastWindowChangeTime = 0;
-    await foreach (var windowChange in channel.Reader.ReadAllAsync(cts.Token))
+
+    while (!cts.IsCancellationRequested)
     {
-        var (windowName, atTime) = windowChange;
-        if (string.IsNullOrWhiteSpace(windowName)
-            || windowName == "Task Switching")
+        uint lastWindowChangeTime = 0;
+        await foreach (var windowChange in channel.Reader.ReadAllAsync(cts.Token))
         {
-            // When alt-tabbing, task switching is a window that appears
-            continue;
-        }
+            var (windowName, atTime) = windowChange;
+            if (string.IsNullOrWhiteSpace(windowName)
+                || windowName == "Task Switching")
+            {
+                // When alt-tabbing, task switching is a window that appears
+                continue;
+            }
 
 #if DEBUG
-        Console.WriteLine($"Read from channel: {windowName}/{atTime}");
+            Console.WriteLine($"Read from channel: {windowName}/{atTime}");
 #endif
 
-        var tarkovActive = windowName == "EscapeFromTarkov";
-        if (tarkovActive && atTime > lastWindowChangeTime)
-        {
+            var tarkovActive = windowName == "EscapeFromTarkov";
+            var isEnabled = tarkovActive && atTime > lastWindowChangeTime;
 #if DEBUG
-            Console.WriteLine("Enabling");
+            Console.WriteLine($"Desired status: {isEnabled}");
 #endif
-            switcher.Enable();
-        }
-        else
-        {
-#if DEBUG
-            Console.WriteLine("Disabling");
-#endif
-            switcher.Disable();
+            try
+            {
+                switcher.Set(isEnabled);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Failed to switch display settings");
+                Console.WriteLine($"{e.GetType} / {e.Message}");
+                Console.WriteLine(e.StackTrace);
+            }
         }
     }
+}
+catch (Exception e)
+{
+    Console.WriteLine("Read loop failed");
+    Console.WriteLine(e.Message);
+    Console.WriteLine(e.StackTrace);
 }
